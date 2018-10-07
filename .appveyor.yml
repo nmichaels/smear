@@ -12,4 +12,16 @@ before_build:
 build_script:
   - mingw32-make debug
   - mingw32-make all
+  - mingw32-make package
 
+artifacts:
+- path: libsmear-dev_*_windows.zip
+  name: Smudge Archive
+
+deploy:
+  description:
+  provider: GitHub
+  auth_token:
+    secure: /er0LdGqETNhhuXckQ5cq6D3pL2kknM0FISmk9TqHx+iS5GG/uAcrcKLnl5Q/g3d
+  on:
+    appveyor_repo_tag: true

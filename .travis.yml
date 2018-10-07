@@ -14,3 +14,15 @@ install:
 - sudo apt-get -qq update
 - sudo apt-get install -y debhelper
 script: make all runtests
+
+deploy:
+  provider: releases
+  api_key:
+    secure: a3QKpgk496aoi2DTQ/qvduPjF2jfxb5u6z0WZXNLXqqUAAejIJ6jv5vLPb+ceYZyHTdZeTGzuWN/uhsNVY0fMvWANSvhoR7aekyWkx+vHKpU4QZPtMR3X9QJdkJibG78UmXRftbUZLbDq6/TX7gWAUCzQh5NKAtqfIwJLCUH1bEwREVdRQbykSnt5NhXPRhRBpSekjWDLUgsc+Z2KG1fYnuZoYiI/VFnIRXkRSycObqrSD7hFXkbXR0UGyGmHhAip3HyTVRMab266ZqxFRa9pTbonABgaVo0A/Ny1U8z8uDh8ou8prxsjq42a69JbPpYPiJ5ACuNohyCsjio4GEj5bRn8ToOlQYKaaxiDT4QupJNQR4qZRqwoZ291RgtthBy78nugshqYZDOsxF8WcVFZ5ZVZ+Kzhhw7+jQZLuwWephDT3XUZYDYIuRSvu5G/v/mozSFLGiT0hlD0mNwQTag3MdJxwIK5868k7VShRAPdRp41AMpQFMLN0fzmf8ZYjoVnga7WcdNQNLAtJ4J3wXmKpQeBykPqyiVqeRWvhSwDlNIZh0DGUkCQ1Llll8TsdRJO1JRf/o9zkhmi0ihZog+szGU1zuuW9myrhWYcQO/kHfEu/YEcef7gTh9wMENSpPar/1dli7WX8+y5df7L2+e7+pcE8vmT+MahUVbGodL030=
+  file_glob: true
+  file: libsmear-dev_*_*.deb
+  skip_cleanup: true
+  on:
+    repo: smudgelang/smear
+    branch: master
+    tags: true
