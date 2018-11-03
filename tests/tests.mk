@@ -6,7 +6,7 @@ VPATH += tests
 # appropriate list.
 TESTS = test-cancelq-fill-then-cancel test-cancelq-fill-then-drain-all \
         test-cancelq-cancel-some-drain-some test-cancelq-not-cancellable \
-        test-cancelq-threads test-number
+        test-cancelq-threads test-number test-smear-waits
 
 MEMCHECK_TESTS = \
         test-cancelq-fill-then-cancel test-cancelq-fill-then-drain-all \
@@ -23,6 +23,12 @@ test-cancelq-%: test-cancelq-%.c obj/cancellable.o
 
 test-queue: test-queue.c obj/queue.o
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^
+
+test-smear-%.o: test-smear-%.c
+	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $<
+
+test-smear-%: test-smear-%.o test-smear-%_main.o libsmear.a 
+	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ -pthread
 
 test-number: test-number.c obj/number.o
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^
