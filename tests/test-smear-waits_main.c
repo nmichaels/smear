@@ -23,6 +23,10 @@ static void body(void)
 int main(void)
 {
     for (int i = 0; i < ITERATIONS; i++)
+    {
+        if ((i & 0xFF) == 0)
+            printf("Tick %d\n", i);
         body();
+    }
     return 0;
 }
