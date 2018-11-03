@@ -186,9 +186,19 @@ EXPORT_SYMBOL void SRT_wait_for_idle(void)
 
 EXPORT_SYMBOL void SRT_wait_for_empty(void)
 {
-    eq_wait_empty(q);
-    sem_wait(&idle_sem);
-    sem_post(&idle_sem);
+    bool loop;
+
+    loop = true;
+    while (loop)
+    {
+        eq_wait_empty(q);
+        sem_wait(&idle_sem);
+        if (eq_empty(q))
+        {
+            loop = false;
+        }
+        sem_post(&idle_sem);
+    }
 }
 
 EXPORT_SYMBOL void SRT_stop(void)
