@@ -122,6 +122,6 @@ $(PACKAGE)_$(SMEAR_VERSION)-linux_$(TARGET_CPU).deb: libsmear.a
 clean:
 	rm -rf debian/$(PACKAGE)
 	rm -rf debian/.debhelper
-	rm -rf obj/* *.a test-* *.dmp *.deb *.tgz *.zip *.build *.buildinfo *.changes
+	rm -rf obj/* *.a *.dmp *.deb *.tgz *.zip *.build *.buildinfo *.changes
 	rm -f debian/files debian/$(PACKAGE).substvars
 	rm -f debian/debhelper-build-stamp
