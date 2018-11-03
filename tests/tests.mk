@@ -6,17 +6,18 @@ VPATH += tests
 # appropriate list.
 TESTS = test-cancelq-fill-then-cancel test-cancelq-fill-then-drain-all \
         test-cancelq-cancel-some-drain-some test-cancelq-not-cancellable \
-        test-cancelq-threads test-number test-smear-waits
+        test-cancelq-threads test-number test-smear-waits \
+        test-smear-delayedwaits
 
 MEMCHECK_TESTS = \
         test-cancelq-fill-then-cancel test-cancelq-fill-then-drain-all \
         test-cancelq-cancel-some-drain-some test-cancelq-not-cancellable \
-        test-cancelq-threads test-number
+        test-cancelq-threads test-number test-smear-delayedwaits
 
 HELGRIND_TESTS =  \
         test-cancelq-fill-then-cancel test-cancelq-fill-then-drain-all \
         test-cancelq-cancel-some-drain-some test-cancelq-not-cancellable \
-        test-cancelq-threads test-number
+        test-cancelq-threads test-number test-smear-delayedwaits
 
 test-cancelq-%: test-cancelq-%.c obj/cancellable.o
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LIBS)

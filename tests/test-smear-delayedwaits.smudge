@@ -1,0 +1,15 @@
+test
+{
+   *this
+    [
+        event -(@send_delayed)-> that
+    ],
+    that
+    [
+        event --> done
+    ],
+    done
+    [
+        _ --
+    ]
+}

@@ -30,7 +30,7 @@ MODULES := smear cancelq number
 LIBS :=
 SRC := 
 CC := gcc
-CFLAGS := $(TARGET_ARCH_CFLAG) -ggdb3 -std=c99 -Wall -Werror -Wextra -Wno-unused-parameter -Wno-unused-function -fvisibility=hidden -O3 -fPIC -pedantic
+CFLAGS := $(TARGET_ARCH_CFLAG) -ggdb3 -std=c99 -Wall -Werror -Wextra -Wno-unused-parameter -Wno-unused-function -fvisibility=hidden -O3 -fPIC # -pedantic
 LDFLAGS := $(TARGET_ARCH_LDFLAG) -r
 INCLUDE := -Iinclude $(foreach mod, $(MODULES), -Isrc/$(mod))
 VPATH := $(foreach mod, $(MODULES), src/$(mod)) include
