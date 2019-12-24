@@ -205,4 +205,3 @@ static heap_data_t *heap_peek(heap_t *heap, abs_time_t time)
 
     return next;
 }
-

@@ -57,7 +57,7 @@ typedef enum
 // run. On success, e points to the cancelled event so that it can be
 // freed.
 cancellation_status_t eq_cancel(event_queue_t *queue, cancellable_id_t id,
-                             void **e);
+                                void **e);
 
 // Cancel the given event ID if it's still in the queue. Otherwise
 // release the resources associated with it. This does not fail if the
@@ -65,7 +65,7 @@ cancellation_status_t eq_cancel(event_queue_t *queue, cancellable_id_t id,
 // the cancelled event so that it can be freed, or NULL if it's
 // already been delivered.
 cancellation_status_t eq_cancel_or_release(event_queue_t *queue,
-                                        cancellable_id_t id, void **e);
+                                           cancellable_id_t id, void **e);
 
 // Release the resources associated with a cancellable event. Fails if
 // the event has not already been run.

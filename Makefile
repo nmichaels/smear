@@ -42,10 +42,9 @@ SMEAR_RELEASE_STAGE_DIR=$(OBJDIR)/$(SMEAR_RELEASE_SUBDIR)
 SMEAR_VERSION=$(shell grep "\bSMEAR_VERSION\b" include/smear/version.h | cut -f 2 -d '"')
 
 default: all
-
 include tests/tests.mk
 include $(patsubst %,$(SRCDIR)/%/module.mk, $(MODULES))
-OBJ := $(SRC:%.c=$(OBJDIR)/%.o)
+OBJ += $(filter-out %.zig, $(SRC:%.c=$(OBJDIR)/%.o)) #$(SRC:%.zig=$(OBJDIR)/lib%.a)
 
 LIBS := $(sort $(LIBS))
 
@@ -67,7 +66,7 @@ debug:
 all: libsmear.a libsmear.dmp tests obj/libsmear.a
 
 
--include $(OBJ:.o=.d)
+-include $(filter %.o, $(OBJ:.o=.d))
 
 %.dmp: %.a
 	$(OBJDUMP) -dSt $< > $@
@@ -125,5 +124,6 @@ clean:
 	rm -rf debian/$(PACKAGE)
 	rm -rf debian/.debhelper
 	rm -rf obj/* *.a *.dmp *.deb *.tgz *.zip *.build *.buildinfo *.changes
+	rm -rf zig-cache
 	rm -f debian/files debian/$(PACKAGE).substvars
 	rm -f debian/debhelper-build-stamp
