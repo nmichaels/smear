@@ -10,4 +10,4 @@ INCLUDE += -Isrc/cancelq/$(ARCH)/
 #obj/cancellable.o: heap.c
 
 obj/libcancellable.a: cancellable.zig smeartime.h cancellable.h
-	zig build-lib src/cancelq/cancellable.zig -lc -isystem src/smear -isystem src/cancelq --output-dir obj -fno-stack-check
+	zig build-lib src/cancelq/cancellable.zig -lc -isystem src/smear -isystem src/cancelq --output-dir obj -fno-stack-check --bundle-compiler-rt -fPIC

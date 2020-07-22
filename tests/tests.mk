@@ -18,6 +18,7 @@ HELGRIND_TESTS =  \
         test-cancelq-fill-then-cancel test-cancelq-fill-then-drain-all \
         test-cancelq-cancel-some-drain-some test-cancelq-not-cancellable \
         test-cancelq-threads test-number test-smear-delayedwaits
+HELGRIND_TESTS= # Disabled because Zig's mutex isn't detected by helgrind
 
 test-cancelq-%: test-cancelq-%.c obj/libcancellable.a obj/smeartime.o
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ $(LIBS)

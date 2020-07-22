@@ -10,10 +10,12 @@ const c = @cImport({
     @cInclude("cancellable.h");
 });
 
+const NOT_CANCELLABLE = @as(c.cancellable_id_t, -1);
+const SCHEDULE_FAIL = @as(c.cancellable_id_t, -2);
+
 const abs_time_t = c.abs_time_t;
 const cancellable_id_t = c.cancellable_id_t;
 const cancellation_status_t = c.cancellation_status_t;
-const NOT_CANCELLABLE = c.NOT_CANCELLABLE;
 
 const CancelError = error{
     NoSuchId,
@@ -55,14 +57,14 @@ const EventQueue = struct {
     empty: ResetEvent,
 
     fn newId(self: *Self) !usize {
-        for (self.ids.toSlice()) |*id, idx| {
+        for (self.ids.items) |*id, idx| {
             if (id.* == .ID_UNUSED) {
                 id.* = .ID_WAITING;
                 return idx;
             }
         }
         try self.ids.append(.ID_WAITING);
-        return self.ids.len - 1;
+        return self.ids.items.len - 1;
     }
 
     fn isEmptyLH(self: *Self) bool {
@@ -91,6 +93,7 @@ const EventQueue = struct {
         } else {
             unreachable; // Attempted to free queue while mutex held.
         }
+        self.empty.deinit();
         self.mutex.deinit();
         self.allocator.destroy(self);
     }
@@ -99,9 +102,11 @@ const EventQueue = struct {
     /// time. Returns an ID that can be used to cancel the event. The
     /// ID is a limited resource that should be released when it's no
     /// longer needed.
-    pub fn schedule(self: *Self,
-                    event: *const c_void,
-                    time: abs_time_t) !?usize {
+    pub fn schedule(
+        self: *Self,
+        event: *const c_void,
+        time: abs_time_t,
+    ) !?usize {
         const lock = self.mutex.acquire();
         defer lock.release();
         const id = self.newId() catch |err| switch (err) {
@@ -142,8 +147,8 @@ const EventQueue = struct {
         const nxt = self.events.remove();
         const event = nxt.event.event;
         if (nxt.id) |id| {
-            assert(self.ids.at(@intCast(usize, id)) == .ID_WAITING);
-            self.ids.set(id, .ID_DELIVERED);
+            assert(self.ids.items[@intCast(usize, id)] == .ID_WAITING);
+            self.ids.items[id] = .ID_DELIVERED;
         }
 
         if (self.isEmptyLH()) {
@@ -158,9 +163,11 @@ const EventQueue = struct {
         return self.isEmptyLH();
     }
 
-    fn cancelLH(self: *Self,
-                id: usize,
-                event: *?*const c_void) CancelError!void {
+    fn cancelLH(
+        self: *Self,
+        id: usize,
+        event: *?*const c_void,
+    ) CancelError!void {
         // Loop through the heap looking for a matching id.
         var iterator = self.events.iterator();
         var idx: usize = 0;
@@ -171,51 +178,55 @@ const EventQueue = struct {
             }
             idx += 1;
         } else {
-            // This should never happen; it's waiting but corrupted.
-            unreachable;
+            return CancelError.NoSuchId;
         }
 
-        const item = self.events.removeIdx(idx) catch {
+        if (self.events.items.len <= idx) {
             return CancelError.NoSuchId;
-        };
-        self.ids.set(id, .ID_UNUSED);
+        }
+        const item = self.events.removeIndex(idx);
+        self.ids.items[id] = .ID_UNUSED;
         event.* = item.event.event;
     }
 
     fn releaseLH(self: *Self, id: usize) CancelError!void {
-        self.ids.set(id, .ID_UNUSED);
+        self.ids.items[id] = .ID_UNUSED;
     }
 
-    pub fn cancel(self: *Self,
-                  id: ?usize,
-                  event: *?*const c_void) CancelError!void {
+    pub fn cancel(
+        self: *Self,
+        id: ?usize,
+        event: *?*const c_void,
+    ) CancelError!void {
         event.* = null;
         const lock = self.mutex.acquire();
         defer lock.release();
         const cid = id orelse return CancelError.NoSuchId;
-        if (self.ids.len <= cid) {
+        if (self.ids.items.len <= cid) {
             return CancelError.NoSuchId;
         }
-        return switch (self.ids.at(cid)) {
+        return switch (self.ids.items[cid]) {
             .ID_UNUSED => CancelError.NoSuchId,
             .ID_DELIVERED => CancelError.AlreadyRun,
             .ID_WAITING => self.cancelLH(cid, event),
         };
     }
 
-    pub fn cancelOrRelease(self: *Self,
-                           id: ?usize,
-                           event: *?*const c_void) CancelError!void {
+    pub fn cancelOrRelease(
+        self: *Self,
+        id: ?usize,
+        event: *?*const c_void,
+    ) CancelError!void {
         event.* = null;
         const cid = id orelse return CancelError.NoSuchId;
 
         const lock = self.mutex.acquire();
         defer lock.release();
 
-        if (self.ids.len <= cid)
+        if (self.ids.items.len <= cid)
             return CancelError.NoSuchId;
 
-        return switch (self.ids.at(cid)) {
+        return switch (self.ids.items[cid]) {
             .ID_UNUSED => CancelError.NoSuchId,
             .ID_WAITING => self.cancelLH(cid, event),
             .ID_DELIVERED => self.releaseLH(cid),
@@ -228,16 +239,18 @@ const EventQueue = struct {
         const lock = self.mutex.acquire();
         defer lock.release();
 
-        if (self.ids.len <= cid)
+        if (self.ids.items.len <= cid)
             return CancelError.NoSuchId;
 
-        return switch (self.ids.at(cid)) {
+        return switch (self.ids.items[cid]) {
             .ID_UNUSED => CancelError.NoSuchId,
             .ID_DELIVERED => self.releaseLH(cid),
             .ID_WAITING => CancelError.NotRun,
         };
     }
 };
+
+// C interface
 
 const event_queue = @OpaqueType();
 
@@ -257,22 +270,26 @@ export fn eq_free(queue: *event_queue) bool {
     return true;
 }
 
-export fn eq_schedule(queue: *event_queue,
-                      event: *const c_void,
-                      time: abs_time_t) cancellable_id_t {
+export fn eq_schedule(
+    queue: *event_queue,
+    event: *const c_void,
+    time: abs_time_t,
+) cancellable_id_t {
     const eq = toEq(queue);
-    const opt_id = eq.schedule(event, time) catch return c.SCHEDULE_FAIL;
+    const opt_id = eq.schedule(event, time) catch return SCHEDULE_FAIL;
     if (opt_id) |id| {
         // Whoops, cancellable should have been size_t.
         return @intCast(cancellable_id_t, id);
     } else {
-        return c.NOT_CANCELLABLE;
+        return NOT_CANCELLABLE;
     }
 }
 
-export fn eq_post(queue: *event_queue,
-                  event: *const c_void,
-                  time: abs_time_t) bool {
+export fn eq_post(
+    queue: *event_queue,
+    event: *const c_void,
+    time: abs_time_t,
+) bool {
     const eq = toEq(queue);
     eq.post(event, time) catch return false;
     return true;
@@ -298,26 +315,32 @@ fn errToStatus(err: CancelError) cancellation_status_t {
     };
 }
 
-export fn eq_cancel(queue: *event_queue,
-                    id: cancellable_id_t,
-                    event: *?*c_void) cancellation_status_t {
+export fn eq_cancel(
+    queue: *event_queue,
+    id: cancellable_id_t,
+    event: *?*c_void,
+) cancellation_status_t {
     const eq = toEq(queue);
     const idx = if (id == NOT_CANCELLABLE) null else @intCast(usize, id);
     eq.cancel(idx, event) catch |err| return errToStatus(err);
     return .SUCCESS;
 }
 
-export fn eq_cancel_or_release(queue: *event_queue,
-                               id: cancellable_id_t,
-                               e: *?*const c_void) cancellation_status_t {
+export fn eq_cancel_or_release(
+    queue: *event_queue,
+    id: cancellable_id_t,
+    e: *?*const c_void,
+) cancellation_status_t {
     const eq = toEq(queue);
     const ev_id = if (id == NOT_CANCELLABLE) null else @intCast(usize, id);
     eq.cancelOrRelease(ev_id, e) catch |err| return errToStatus(err);
     return .SUCCESS;
 }
 
-export fn eq_release(queue: *event_queue,
-                     id: cancellable_id_t) cancellation_status_t {
+export fn eq_release(
+    queue: *event_queue,
+    id: cancellable_id_t,
+) cancellation_status_t {
     const eq = toEq(queue);
     const ev_id = if (id == NOT_CANCELLABLE) null else @intCast(usize, id);
     eq.release(ev_id) catch |err| return errToStatus(err);
@@ -330,35 +353,23 @@ export fn eq_validate(q: *event_queue) bool {
 
 export fn eq_wait_empty(queue: *event_queue) void {
     const eq = toEq(queue);
-    eq.empty.wait();
+    while (!eq.isEmpty()) {
+        eq.empty.timedWait(100_000) catch continue;
+        break;
+    }
 }
 
 fn lessThan(a: u32, b: u32) bool {
     return a < b;
 }
 
-test "remove at index" {
-    const expectError = std.testing.expectError;
-    const expectEqual = std.testing.expectEqual;
-    var queue = PriorityQueue(u32).init(std.debug.global_allocator, lessThan);
-    defer queue.deinit();
-
-    try queue.add(3);
-    try queue.add(2);
-    try queue.add(1);
-    expectError(PriorityQueue(u32).Error.BoundsError, queue.removeIdx(5));
-
-    var it = queue.iterator();
-    var elem = it.next();
-    var idx: usize = 0;
-    const two_idx = while (elem != null) : (elem = it.next()) {
-        if (elem.? == 2)
-            break idx;
-        idx += 1;
-    } else unreachable;
-
-    expectEqual(queue.removeIdx(two_idx), 2);
-    expectEqual(queue.remove(), 1);
-    expectEqual(queue.remove(), 3);
-    expectEqual(queue.removeOrNull(), null);
+test "queue insert/remove" {
+    var q = eq_new().?;
+    defer std.testing.expectEqual(eq_free(q), true);
+    const id8 = eq_schedule(q, @intToPtr(*c_void, 7), 8);
+    const id3 = eq_schedule(q, @intToPtr(*c_void, 33), 3);
+    std.testing.expectEqual(eq_next_event(q, 0), null);
+    std.testing.expectEqual(eq_next_event(q, 4).?, @intToPtr(*c_void, 33));
+    std.testing.expectEqual(eq_next_event(q, 9).?, @intToPtr(*c_void, 7));
+    std.testing.expectEqual(eq_next_event(q, 1000), null);
 }
