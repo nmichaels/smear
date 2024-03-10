@@ -1,0 +1,48 @@
+const std = @import("std");
+
+// runner.
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+
+    const optimize = b.standardOptimizeOption(.{});
+
+    const cancelq = b.addObject(.{
+        .name = "cancellable",
+        .root_source_file = .{ .path = "src/cancelq/cancellable.zig" },
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .pic = true,
+    });
+    // We need this for the stack checking in safe build modes. I
+    // suppose we could leave it out in ReleaseFast and ReleaseSmall,
+    // but...the linker will drop unused symbols anyway.
+    cancelq.bundle_compiler_rt = true;
+    cancelq.addIncludePath(std.Build.LazyPath.relative("src/smear"));
+
+    const cancelq_install = b.addInstallArtifact(
+        cancelq,
+        .{
+            // Wow, that's pretty hacky but hey it works.
+            .dest_dir = .{ .override = .{ .custom = "../obj" } },
+        },
+    );
+    b.getInstallStep().dependOn(&cancelq_install.step);
+
+    // Creates a step for unit testing. This only builds the test executable
+    // but does not run it.
+    const cancelq_unit_tests = b.addTest(.{
+        .root_source_file = .{ .path = "src/cancelq/cancellable.zig" },
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+
+    const run_cancelq_unit_tests = b.addRunArtifact(cancelq_unit_tests);
+
+    // Similar to creating the run step earlier, this exposes a `test` step to
+    // the `zig build --help` menu, providing a way for the user to request
+    // running the unit tests.
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&run_cancelq_unit_tests.step);
+}

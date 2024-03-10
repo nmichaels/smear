@@ -25,7 +25,7 @@ static void *insert1(void *q)
     for (i = 2; i < COUNT; i+= 2)
     {
         ids[i] = eq_schedule(q, (void *)i, i);
-        assert(ids[i] != NOT_CANCELLABLE);
+        assert(ids[i] > NOT_CANCELLABLE);
     }
     return ids;
 }
@@ -43,7 +43,7 @@ static void *insert2(void *q)
     for (i = 1; i < COUNT; i+= 2)
     {
         ids[i] = eq_schedule(q, (void *)i, i);
-        assert(ids[i] != NOT_CANCELLABLE);
+        assert(ids[i] > NOT_CANCELLABLE);
     }
     return ids;
 }

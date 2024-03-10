@@ -45,7 +45,8 @@ default: all
 
 include tests/tests.mk
 include $(patsubst %,$(SRCDIR)/%/module.mk, $(MODULES))
-OBJ := $(SRC:%.c=$(OBJDIR)/%.o)
+COBJ := $(SRC:%.c=$(OBJDIR)/%.o)
+OBJ :=  $(COBJ:%.zig=$(OBJDIR)/%.o)
 
 LIBS := $(sort $(LIBS))
 

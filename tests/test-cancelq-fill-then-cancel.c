@@ -18,6 +18,7 @@ int main(void)
     for (intptr_t i = 0; i < COUNT; i++)
     {
         ids[i] = eq_schedule(q, (void *)i, i*2);
+        assert(ids[i] >= 0);
         if (PARANOID)
             assert(eq_validate(q));
         assert(ids[i] != NOT_CANCELLABLE);

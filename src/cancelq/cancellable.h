@@ -2,6 +2,7 @@
 #define CANCELLABLE_H
 
 #include <stddef.h>
+#include <sys/types.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include "smeartime.h"
@@ -13,7 +14,7 @@
 typedef struct event_queue_s event_queue_t;
 
 // ID used to cancel cancellable_t
-typedef int cancellable_id_t;
+typedef ssize_t cancellable_id_t;
 
 // Return a new event queue that will schedule and deliver events with
 // the eq functions below.
