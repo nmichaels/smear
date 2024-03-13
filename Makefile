@@ -79,7 +79,10 @@ obj/%.d: %.c # Slightly modified from GNU Make tutorial
 	  sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' < $@.$$$$ > $@; \
 	  rm -f $@.$$$$
 
-libsmear.a: $(OBJ)
+# Hacky way to get rid of object file built by Zig; otherwise we get
+# multiple definition errors because cancellable.zig is included by
+# smear.zig.
+libsmear.a: $(subst obj/cancellable.o,,$(OBJ))
 	$(LD) $(LDFLAGS) -o $@ $^
 	$(OBJCOPY) --localize-hidden $@
 

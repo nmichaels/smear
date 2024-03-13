@@ -6,6 +6,26 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
+    const smearo = b.addObject(.{
+        .name = "smear",
+        .root_source_file = .{ .path = "src/smear/smear.zig" },
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .pic = true,
+    });
+    smearo.bundle_compiler_rt = true;
+    smearo.addIncludePath(std.Build.LazyPath.relative("include"));
+    smearo.addIncludePath(std.Build.LazyPath.relative("src/cancelq"));
+    smearo.addIncludePath(std.Build.LazyPath.relative("src/smear"));
+    const smearo_install = b.addInstallArtifact(
+        smearo,
+        .{
+            .dest_dir = .{.override = .{.custom = "../obj"}},
+        },
+    );
+    b.getInstallStep().dependOn(&smearo_install.step);
+
     const cancelq = b.addObject(.{
         .name = "cancellable",
         .root_source_file = .{ .path = "src/cancelq/cancellable.zig" },
@@ -19,6 +39,7 @@ pub fn build(b: *std.Build) void {
     // but...the linker will drop unused symbols anyway.
     cancelq.bundle_compiler_rt = true;
     cancelq.addIncludePath(std.Build.LazyPath.relative("src/smear"));
+    smearo.root_module.addImport("cancelq", &cancelq.root_module);
 
     const cancelq_install = b.addInstallArtifact(
         cancelq,

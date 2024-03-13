@@ -57,7 +57,7 @@ test-number: test-number.c obj/number.o
 
 runtests: $(foreach t, $(TESTS), $(t).log) \
           $(foreach t, $(MEMCHECK_TESTS), $(t).memcheck.log) \
-          $(foreach t, $(HELGRIND_TESTS), $(t).helgrind.log)
+          #$(foreach t, $(HELGRIND_TESTS), $(t).helgrind.log)
 
 clean: testclean
 

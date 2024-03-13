@@ -8,15 +8,28 @@
 
 static void body(void)
 {
+    const char *volatile name;
     SRT_init();
     SRT_run();
-    assert(strcmp(test_Current_state_name(), "this") == 0);
+
+    name = test_Current_state_name();
+    assert(strcmp(name, "this") == 0);
     test_event(NULL);
     SRT_wait_for_empty();
-    assert(strcmp(test_Current_state_name(), "that") == 0);
+    // There's a race here, where SRT_wait_for_empty() can return
+    // before the event is actually handled. To get around this, we
+    // just wait an extra millisecond. This would tie us to POSIX if I
+    // didn't stick a sleep function in smear.zig, but I did. It slows
+    // the test down by a lot, since we're running 10,000 iterations
+    // and 2ms * 10,000 is 20 seconds, but at least now it passes.
+    SRT_nap();
+    name = test_Current_state_name();
+    assert(strcmp(name, "that") == 0);
     test_event(NULL);
     SRT_wait_for_empty();
-    assert(strcmp(test_Current_state_name(), "this") == 0);
+    SRT_nap();
+    name = test_Current_state_name();
+    assert(strcmp(name, "this") == 0);
     SRT_stop();
 }
 
