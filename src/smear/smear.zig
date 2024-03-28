@@ -145,7 +145,7 @@ pub fn sendMessage(
 export fn SRT_send_message(msg: ?*anyopaque, handler: Handler) void {
     const m = msg orelse {
         errorMsg("Null message sent.");
-        std.os.exit(0xfd);
+        std.process.exit(0xfd);
     };
 
     sendMessage(m, handler, c_allocator) catch |err| {
@@ -155,7 +155,7 @@ export fn SRT_send_message(msg: ?*anyopaque, handler: Handler) void {
             ),
             error.EnqueueError => errorMsg("Failed to enqueue message."),
         }
-        std.os.exit(0xfd);
+        std.process.exit(0xfd);
     };
 }
 
@@ -166,18 +166,18 @@ export fn SRT_send_later(
 ) usize {
     const m = msg orelse {
         errorMsg("Null message sent.");
-        std.os.exit(0xfd);
+        std.process.exit(0xfd);
     };
     const qmsg = getQMsg(m, handler, c_allocator) catch {
         errorMsg("Failed to allocate wrapper memory.");
-        std.os.exit(0xfe);
+        std.process.exit(0xfe);
     };
     const id: usize = q.schedule(
         @ptrCast(qmsg),
         c.get_now_ns() + delay_ms * std.time.ns_per_ms,
     ) catch {
         errorMsg("Failed to schedule message.");
-        std.os.exit(0xfe);
+        std.process.exit(0xfe);
     };
     return id;
 }
@@ -185,7 +185,7 @@ export fn SRT_send_later(
 export fn SRT_cancel(id: usize) void {
     const qmsg: ?*const Msg = @alignCast(@ptrCast(q.cancelOrRelease(id) catch {
         errorMsg("Failed to release event.");
-        std.os.exit(0x100 - 4);
+        std.process.exit(0x100 - 4);
     }));
     if (qmsg) |msg| {
         c_allocator.destroy(msg);
