@@ -15,9 +15,9 @@ pub fn build(b: *std.Build) void {
         .pic = true,
     });
     smearo.bundle_compiler_rt = true;
-    smearo.addIncludePath(std.Build.LazyPath.relative("include"));
-    smearo.addIncludePath(std.Build.LazyPath.relative("src/cancelq"));
-    smearo.addIncludePath(std.Build.LazyPath.relative("src/smear"));
+    smearo.addIncludePath(b.path("include"));
+    smearo.addIncludePath(b.path("src/cancelq"));
+    smearo.addIncludePath(b.path("src/smear"));
     const smearo_install = b.addInstallArtifact(
         smearo,
         .{
@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
     // suppose we could leave it out in ReleaseFast and ReleaseSmall,
     // but...the linker will drop unused symbols anyway.
     cancelq.bundle_compiler_rt = true;
-    cancelq.addIncludePath(std.Build.LazyPath.relative("src/smear"));
+    cancelq.addIncludePath(b.path("src/smear"));
     smearo.root_module.addImport("cancelq", &cancelq.root_module);
 
     const cancelq_install = b.addInstallArtifact(
