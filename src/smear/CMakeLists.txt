@@ -36,6 +36,14 @@ target_sources(smear PRIVATE
   "posix/thread-utils.c"
 )
 
+target_sources(smear PUBLIC
+  FILE_SET HEADERS
+  BASE_DIRS "${CMAKE_SOURCE_DIR}/include"
+  FILES
+  "${CMAKE_SOURCE_DIR}/include/smear/smear.h"
+  "${CMAKE_SOURCE_DIR}/include/smear/version.h"
+)
+  
 target_link_libraries(smear PRIVATE
   cancelq
 )
