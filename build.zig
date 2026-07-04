@@ -6,40 +6,69 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
-    const smearo = b.addObject(.{
-        .name = "smear",
-        .root_source_file = .{ .path = "src/smear/smear.zig" },
+    const smeartime = b.addTranslateC(.{
+        .root_source_file = b.path("src/smear/smeartime.h"),
         .target = target,
         .optimize = optimize,
-        .link_libc = true,
-        .pic = true,
+    });
+
+    const time_mod = smeartime.createModule();
+
+    const version = b.addTranslateC(.{
+        .root_source_file = b.path("include/smear/version.h"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    var smearo = b.addObject(.{
+        .name = "smear",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/smear/smear.zig"),
+            .target = target,
+            .imports = &.{
+                .{ .name = "smeartime", .module = time_mod },
+                .{ .name = "version", .module = version.createModule() },
+            },
+            .optimize = optimize,
+            .link_libc = true,
+            .pic = true,
+        }),
     });
     smearo.bundle_compiler_rt = true;
-    smearo.addIncludePath(b.path("include"));
-    smearo.addIncludePath(b.path("src/cancelq"));
-    smearo.addIncludePath(b.path("src/smear"));
+    smearo.root_module.addIncludePath(b.path("include"));
+    smearo.root_module.addIncludePath(b.path("src/cancelq"));
+    smearo.root_module.addIncludePath(b.path("src/smear"));
     const smearo_install = b.addInstallArtifact(
         smearo,
         .{
-            .dest_dir = .{.override = .{.custom = "../obj"}},
+            .dest_dir = .{ .override = .{ .custom = "../obj" } },
         },
     );
     b.getInstallStep().dependOn(&smearo_install.step);
 
-    const cancelq = b.addObject(.{
+    var cancelq = b.addObject(.{
         .name = "cancellable",
-        .root_source_file = .{ .path = "src/cancelq/cancellable.zig" },
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
-        .pic = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/cancelq/cancellable.zig"),
+            .imports = &.{
+                .{
+                    .name = "smeartime",
+                    .module = time_mod,
+                },
+            },
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .pic = true,
+        }),
     });
+
     // We need this for the stack checking in safe build modes. I
     // suppose we could leave it out in ReleaseFast and ReleaseSmall,
     // but...the linker will drop unused symbols anyway.
     cancelq.bundle_compiler_rt = true;
-    cancelq.addIncludePath(b.path("src/smear"));
-    smearo.root_module.addImport("cancelq", &cancelq.root_module);
+    cancelq.root_module.addIncludePath(b.path("src/smear"));
+    smearo.root_module.addImport("cancelq", cancelq.root_module);
 
     const cancelq_install = b.addInstallArtifact(
         cancelq,
@@ -53,10 +82,8 @@ pub fn build(b: *std.Build) void {
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const cancelq_unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/cancelq/cancellable.zig" },
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
+        .root_module = cancelq.root_module,
+        .use_llvm = true,
     });
 
     const run_cancelq_unit_tests = b.addRunArtifact(cancelq_unit_tests);

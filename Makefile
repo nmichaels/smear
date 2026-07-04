@@ -131,3 +131,4 @@ clean:
 	rm -rf obj/* *.a *.dmp *.deb *.tgz *.zip *.build *.buildinfo *.changes
 	rm -f debian/files debian/$(PACKAGE).substvars
 	rm -f debian/debhelper-build-stamp
+	rm -rf .zig-cache

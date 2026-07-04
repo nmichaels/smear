@@ -1,15 +1,13 @@
 const std = @import("std");
 const cancelq = @import("cancelq");
 
-const c = @cImport({
-    @cInclude("smear/version.h");
-    @cInclude("smeartime.h");
-    @cInclude("stdio.h");
-    @cInclude("stdlib.h");
-});
+const version = @import("version");
+const smeartime = @import("smeartime");
+const c = std.c;
 
 const Thread = std.Thread;
-const Semaphore = Thread.Semaphore;
+const Io = std.Io;
+const Semaphore = Io.Semaphore;
 const Allocator = std.mem.Allocator;
 
 var q: *cancelq.EventQueue = undefined;
@@ -18,8 +16,9 @@ var idle_sem = Semaphore{};
 var done = Semaphore{};
 var wake = Semaphore{};
 const c_allocator = std.heap.c_allocator;
+var threaded: Io.Threaded = undefined;
 
-const Handler = *const fn (*const anyopaque) callconv(.C) void;
+const Handler = *const fn (*const anyopaque) callconv(.c) void;
 
 const Msg = struct {
     wrapper: *const anyopaque,
@@ -27,31 +26,35 @@ const Msg = struct {
 };
 
 pub fn getVersion() [:0]const u8 {
-    return c.SMEAR_VERSION;
+    return version.SMEAR_VERSION;
 }
 
 export fn SRT_get_version() [*c]const u8 {
     return getVersion();
 }
 
-pub fn init(allocator: Allocator) !void {
-    q = try cancelq.EventQueue.new(allocator);
+pub fn init(allocator: Allocator, io: Io) !void {
+    q = try cancelq.EventQueue.new(allocator, io);
     // Pthread sem_init would happen here.
 }
 
 export fn SRT_init() void {
-    init(c_allocator) catch unreachable;
+    threaded = Io.Threaded.init(c_allocator, .{});
+    init(c_allocator, threaded.io()) catch unreachable;
 }
 
 /// Sleep for 1 ms.
-fn wait_wake() void {
-    wake.timedWait(std.time.ns_per_ms) catch {};
+fn wait_wake(io: Io) void {
+    const ms = Io.Timeout{
+        .duration = .{ .raw = .fromMilliseconds(1), .clock = .cpu_thread },
+    };
+    wake.waitTimeout(io, ms) catch {};
 }
 
 fn flushEventQueue(allocator: Allocator) void {
     while (true) {
-        const qmsg: ?*const Msg = @alignCast(@ptrCast(
-            q.nextEvent(c.get_now_ns()),
+        const qmsg: ?*const Msg = @ptrCast(@alignCast(
+            q.nextEvent(smeartime.get_now_ns()),
         ));
         if (qmsg) |msg| {
             msg.handler(msg.wrapper);
@@ -62,56 +65,59 @@ fn flushEventQueue(allocator: Allocator) void {
     }
 }
 
-fn mainloop(allocator: Allocator) void {
+fn mainloop(allocator: Allocator, io: Io) void {
     while (true) {
         flushEventQueue(allocator);
-        idle_sem.post();
+        idle_sem.post(io);
         checkDone: { // If waiting on the done semaphore succeeds, return.
-            done.timedWait(0) catch break :checkDone;
+            const zero = Io.Timeout{
+                .duration = .{ .raw = Io.Duration.zero, .clock = .cpu_thread },
+            };
+            done.waitTimeout(io, zero) catch break :checkDone;
             return;
         }
-        wait_wake();
-        idle_sem.wait();
+        wait_wake(io);
+        idle_sem.waitUncancelable(io);
     }
 }
 
-pub fn run(allocator: Allocator) !void {
-    thread = try Thread.spawn(.{}, mainloop, .{allocator});
+pub fn run(allocator: Allocator, io: Io) !void {
+    thread = try Thread.spawn(.{}, mainloop, .{ allocator, io });
 }
 
 export fn SRT_run() void {
-    run(c_allocator) catch unreachable;
+    run(c_allocator, threaded.io()) catch unreachable;
 }
 
-pub fn stop(allocator: Allocator) void {
-    done.post();
+pub fn stop(allocator: Allocator, io: Io) void {
+    done.post(io);
     thread.join();
     std.debug.assert(q.free(allocator));
     // Pthread sem_destroy would happen here.
 }
 
 export fn SRT_stop() void {
-    stop(c_allocator);
+    stop(c_allocator, threaded.io());
 }
 
-pub fn waitForIdle() void {
-    idle_sem.wait();
-    idle_sem.post();
+pub fn waitForIdle(io: Io) void {
+    idle_sem.waitUncancelable(io);
+    idle_sem.post(io);
 }
 
 export fn SRT_wait_for_idle() void {
-    waitForIdle();
+    waitForIdle(threaded.io());
 }
 
-pub fn waitForEmpty() void {
+pub fn waitForEmpty(io: Io) void {
     var loop: bool = true;
     while (loop) {
         q.waitEmpty();
-        idle_sem.wait();
+        idle_sem.waitUncancelable(io);
         if (q.empty()) {
             loop = false;
         }
-        idle_sem.post();
+        idle_sem.post(io);
     }
 }
 
@@ -120,7 +126,7 @@ pub fn errorMsg(str: []const u8) void {
 }
 
 export fn SRT_wait_for_empty() void {
-    waitForEmpty();
+    waitForEmpty(threaded.io());
 }
 
 /// Return a new message for the queue that wraps up msg and handler.
@@ -135,11 +141,13 @@ pub fn sendMessage(
     msg: *anyopaque,
     handler: Handler,
     allocator: Allocator,
+    io: Io,
 ) !void {
     const qmsg: *Msg = getQMsg(msg, handler, allocator) catch
         return error.AllocationError;
-    q.post(@ptrCast(qmsg), c.get_now_ns()) catch return error.EnqueueError;
-    wake.post();
+    q.post(@ptrCast(qmsg), smeartime.get_now_ns()) catch
+        return error.EnqueueError;
+    wake.post(io);
 }
 
 export fn SRT_send_message(msg: ?*anyopaque, handler: Handler) void {
@@ -148,7 +156,7 @@ export fn SRT_send_message(msg: ?*anyopaque, handler: Handler) void {
         std.process.exit(0xfd);
     };
 
-    sendMessage(m, handler, c_allocator) catch |err| {
+    sendMessage(m, handler, c_allocator, threaded.io()) catch |err| {
         switch (err) {
             error.AllocationError => errorMsg(
                 "Failed to allocate wrapper memory.",
@@ -174,7 +182,7 @@ export fn SRT_send_later(
     };
     const id: usize = q.schedule(
         @ptrCast(qmsg),
-        c.get_now_ns() + delay_ms * std.time.ns_per_ms,
+        smeartime.get_now_ns() + delay_ms * std.time.ns_per_ms,
     ) catch {
         errorMsg("Failed to schedule message.");
         std.process.exit(0xfe);
@@ -183,7 +191,7 @@ export fn SRT_send_later(
 }
 
 export fn SRT_cancel(id: usize) void {
-    const qmsg: ?*const Msg = @alignCast(@ptrCast(q.cancelOrRelease(id) catch {
+    const qmsg: ?*const Msg = @ptrCast(@alignCast(q.cancelOrRelease(id) catch {
         errorMsg("Failed to release event.");
         std.process.exit(0x100 - 4);
     }));
@@ -194,11 +202,17 @@ export fn SRT_cancel(id: usize) void {
 
 /// Sleep for 1 millisecond.
 export fn SRT_nap() void {
-    std.time.sleep(std.time.ns_per_ms);
+    const io = threaded.io();
+    const ms = Io.Clock.Duration{
+        .raw = .fromMilliseconds(1),
+        .clock = .awake,
+    };
+    ms.sleep(io) catch {};
 }
 
+pub extern "c" fn fprintf(fid: c_int, format: [*:0]const u8, ...) c_int;
 export fn SMUDGE_debug_print(fmt: [*c]u8, a1: [*c]u8, a2: [*c]u8) void {
-    _ = c.fprintf(c.stderr, fmt, a1, a2);
+    _ = fprintf(c.STDERR_FILENO, fmt, a1, a2);
 }
 
 export fn SMUDGE_free(ptr: [*]u8) void {
