@@ -50,8 +50,7 @@ OBJ :=  $(COBJ:%.zig=$(OBJDIR)/%.o)
 
 LIBS := $(sort $(LIBS))
 
-.PHONY: clean default all tests \
-        package zip tgz deb
+.PHONY: clean default all tests package zip tgz deb ALWAYS
 
 
 debug:
@@ -124,6 +123,9 @@ $(PACKAGE)_$(SMEAR_VERSION)-linux_$(TARGET_CPU).deb: libsmear.a
 	debuild -i -us -uc -nc -b
 	mv ../$(PACKAGE)_$(SMEAR_VERSION)-$(TARGET_PLATFORM)_$(TARGET_CPU).deb .
 	mv ../libsmear_$(SMEAR_VERSION)-$(TARGET_PLATFORM)_$(TARGET_CPU).* .
+
+zigtest: ALWAYS
+	zig build test
 
 clean:
 	rm -rf debian/$(PACKAGE)

@@ -89,15 +89,15 @@ export fn SRT_run() void {
     run(c_allocator, threaded.io()) catch unreachable;
 }
 
-pub fn stop(allocator: Allocator, io: Io) void {
+pub fn stop(io: Io) void {
     done.post(io);
     thread.join();
-    std.debug.assert(q.free(allocator));
+    std.debug.assert(q.free());
     // Pthread sem_destroy would happen here.
 }
 
 export fn SRT_stop() void {
-    stop(c_allocator, threaded.io());
+    stop(threaded.io());
 }
 
 pub fn waitForIdle(io: Io) void {
