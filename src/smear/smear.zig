@@ -51,10 +51,10 @@ fn wait_wake(io: Io) void {
     wake.waitTimeout(io, ms) catch {};
 }
 
-fn flushEventQueue(allocator: Allocator) void {
+fn flushEventQueue(allocator: Allocator, io: Io) void {
     while (true) {
         const qmsg: ?*const Msg = @ptrCast(@alignCast(
-            q.nextEvent(smeartime.get_now_ns()),
+            q.nextEvent(smeartime.get_now_ns(io)),
         ));
         if (qmsg) |msg| {
             msg.handler(msg.wrapper);
@@ -67,7 +67,7 @@ fn flushEventQueue(allocator: Allocator) void {
 
 fn mainloop(allocator: Allocator, io: Io) void {
     while (true) {
-        flushEventQueue(allocator);
+        flushEventQueue(allocator, io);
         idle_sem.post(io);
         checkDone: { // If waiting on the done semaphore succeeds, return.
             const zero = Io.Timeout{
@@ -145,7 +145,7 @@ pub fn sendMessage(
 ) !void {
     const qmsg: *Msg = getQMsg(msg, handler, allocator) catch
         return error.AllocationError;
-    q.post(@ptrCast(qmsg), smeartime.get_now_ns()) catch
+    q.post(@ptrCast(qmsg), smeartime.get_now_ns(io)) catch
         return error.EnqueueError;
     wake.post(io);
 }
@@ -182,7 +182,7 @@ export fn SRT_send_later(
     };
     const id: usize = q.schedule(
         @ptrCast(qmsg),
-        smeartime.get_now_ns() + delay_ms * std.time.ns_per_ms,
+        smeartime.get_now_ns(threaded.io()) + delay_ms * std.time.ns_per_ms,
     ) catch {
         errorMsg("Failed to schedule message.");
         std.process.exit(0xfe);

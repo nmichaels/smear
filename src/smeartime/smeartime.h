@@ -9,6 +9,7 @@ typedef uint64_t abs_time_t;
 // Relative time between two abs_time_t, in ns.
 typedef int64_t rel_time_t;
 
+// These are only used from Zig code.
 abs_time_t get_now_ns(void);
 
 abs_time_t get_now_real_ns(void);

@@ -6,13 +6,11 @@ pub fn build(b: *std.Build) void {
 
     const optimize = b.standardOptimizeOption(.{});
 
-    const smeartime = b.addTranslateC(.{
-        .root_source_file = b.path("src/smear/smeartime.h"),
+    const smeartime = b.createModule(.{
+        .root_source_file = b.path("src/smeartime/smeartime.zig"),
         .target = target,
         .optimize = optimize,
     });
-
-    const time_mod = smeartime.createModule();
 
     const version = b.addTranslateC(.{
         .root_source_file = b.path("include/smear/version.h"),
@@ -26,7 +24,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/smear/smear.zig"),
             .target = target,
             .imports = &.{
-                .{ .name = "smeartime", .module = time_mod },
+                .{ .name = "smeartime", .module = smeartime },
                 .{ .name = "version", .module = version.createModule() },
             },
             .optimize = optimize,
@@ -50,12 +48,7 @@ pub fn build(b: *std.Build) void {
         .name = "cancellable",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/cancelq/cancellable.zig"),
-            .imports = &.{
-                .{
-                    .name = "smeartime",
-                    .module = time_mod,
-                },
-            },
+            .imports = &.{.{ .name = "smeartime", .module = smeartime }},
             .target = target,
             .optimize = optimize,
             .link_libc = true,
