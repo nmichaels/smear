@@ -26,7 +26,7 @@ endif
 
 OBJDIR := obj
 SRCDIR := src
-MODULES := smear cancelq number
+MODULES := smear cancelq
 LIBS :=
 SRC := 
 CC ?= gcc

@@ -4,11 +4,11 @@ VPATH += tests
 # tests. If a test takes too long to run under one or both of those
 # tools, we can exclude it from them by not including it in the
 # appropriate list.
-TESTS = test-number test-smear-waits test-smear-delayedwaits
+TESTS = test-smear-waits test-smear-delayedwaits
 
-MEMCHECK_TESTS = test-number test-smear-delayedwaits
+MEMCHECK_TESTS = test-smear-delayedwaits
 
-HELGRIND_TESTS = test-number test-smear-delayedwaits
+HELGRIND_TESTS = test-smear-delayedwaits
 
 test-smear-%.o: test-smear-%.c
 	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $<
@@ -18,9 +18,6 @@ test-smear-%: test-smear-%.o test-smear-%_main.o libsmear.a
 
 test-rt-%: test-rt-%.o libsmear.a
 	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^ -pthread
-
-test-number: test-number.c obj/number.o
-	$(CC) $(CFLAGS) $(INCLUDE) -o $@ $^
 
 .PHONY: runtests testclean
 
