@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     const smeartime = b.createModule(.{
-        .root_source_file = b.path("src/smeartime/smeartime.zig"),
+        .root_source_file = b.path("src/smeartime.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -18,64 +18,54 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const cancelq = b.createModule(.{
+        .root_source_file = b.path("src/cancellable.zig"),
+        .imports = &.{.{ .name = "smeartime", .module = smeartime }},
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .pic = true,
+    });
+
+    const smear = b.createModule(.{
+        .root_source_file = b.path("src/smear.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "smeartime", .module = smeartime },
+            .{ .name = "version", .module = version.createModule() },
+            .{ .name = "cancelq", .module = cancelq },
+        },
+        .optimize = optimize,
+        .link_libc = true,
+        .pic = true,
+        .strip = true,
+    });
+
     var smearo = b.addObject(.{
         .name = "smear",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/smear/smear.zig"),
-            .target = target,
-            .imports = &.{
-                .{ .name = "smeartime", .module = smeartime },
-                .{ .name = "version", .module = version.createModule() },
-            },
-            .optimize = optimize,
-            .link_libc = true,
-            .pic = true,
-        }),
+        .root_module = smear,
     });
     smearo.bundle_compiler_rt = true;
     smearo.root_module.addIncludePath(b.path("include"));
-    smearo.root_module.addIncludePath(b.path("src/cancelq"));
-    smearo.root_module.addIncludePath(b.path("src/smear"));
-    const smearo_install = b.addInstallArtifact(
-        smearo,
+    smearo.root_module.addIncludePath(b.path("src"));
+
+    const smeara = b.addLibrary(
         .{
-            .dest_dir = .{ .override = .{ .custom = "../obj" } },
+            .name = "smear",
+            .root_module = smear,
         },
     );
-    b.getInstallStep().dependOn(&smearo_install.step);
 
-    var cancelq = b.addObject(.{
-        .name = "cancellable",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/cancelq/cancellable.zig"),
-            .imports = &.{.{ .name = "smeartime", .module = smeartime }},
-            .target = target,
-            .optimize = optimize,
-            .link_libc = true,
-            .pic = true,
-        }),
-    });
-
-    // We need this for the stack checking in safe build modes. I
-    // suppose we could leave it out in ReleaseFast and ReleaseSmall,
-    // but...the linker will drop unused symbols anyway.
-    cancelq.bundle_compiler_rt = true;
-    cancelq.root_module.addIncludePath(b.path("src/smear"));
-    smearo.root_module.addImport("cancelq", cancelq.root_module);
-
-    const cancelq_install = b.addInstallArtifact(
-        cancelq,
-        .{
-            // Wow, that's pretty hacky but hey it works.
-            .dest_dir = .{ .override = .{ .custom = "../obj" } },
-        },
+    const smeara_install = b.addInstallArtifact(
+        smeara,
+        .{ .dest_dir = .{ .override = .{ .custom = "../" } } },
     );
-    b.getInstallStep().dependOn(&cancelq_install.step);
+    b.getInstallStep().dependOn(&smeara_install.step);
 
     // Creates a step for unit testing. This only builds the test executable
     // but does not run it.
     const cancelq_unit_tests = b.addTest(.{
-        .root_module = cancelq.root_module,
+        .root_module = cancelq,
         .use_llvm = true,
     });
 

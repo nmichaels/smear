@@ -1,10 +1,10 @@
-TARGET_ARCH_CFLAG_32=-m32
+TARGETBITS=64
+TARGET_ARCH_CFLAG_64=-m64
 TARGET_ARCH_CFLAG=$(TARGET_ARCH_CFLAG_$(TARGETBITS))
-TARGET_ARCH_LDFLAG_32=-melf_i386
 TARGET_ARCH_LDFLAG=$(TARGET_ARCH_LDFLAG_$(TARGETBITS))
 
 CPU_PLAT_RAW=$(shell $(CC) -dumpmachine)
-CPU_RAW=$(shell $(CC) $(TARGET_ARCH_CFLAG) -Q --help=target | grep march | awk '{print $$2}')
+CPU_RAW=$(shell $(CC) $(TARGET_ARCH_CFLAG) -Q --help=target | grep march | head -n 1 | awk '{print $$2}')
 CPU_x86_64=amd64
 CPU_x86-64=amd64
 CPU_nocona=amd64
@@ -26,16 +26,16 @@ endif
 
 OBJDIR := obj
 SRCDIR := src
-MODULES := smear cancelq
 LIBS :=
-SRC := 
+SRC := $(wildcard src/*.zig)
+OBJ := obj/smear.o
 CC ?= gcc
 OBJDUMP ?= objdump
 OBJCOPY ?= objcopy
+INCLUDE=-Iinclude
 CFLAGS := $(TARGET_ARCH_CFLAG) -ggdb3 -std=c99 -Wall -Werror -Wextra -Wno-unused-parameter -Wno-unused-function -fvisibility=hidden -O3 -fPIC # -pedantic
-LDFLAGS := $(TARGET_ARCH_LDFLAG) -r
-INCLUDE := -Iinclude $(foreach mod, $(MODULES), -Isrc/$(mod))
-VPATH := $(foreach mod, $(MODULES), src/$(mod)) include
+ZIG ?= zig
+ZIGFLAGS ?= 
 PACKAGE=libsmear-dev
 SMEAR_RELEASE_SUBDIR=smear
 SMEAR_RELEASE_STAGE_DIR=$(OBJDIR)/$(SMEAR_RELEASE_SUBDIR)
@@ -44,52 +44,30 @@ SMEAR_VERSION=$(shell grep "\bSMEAR_VERSION\b" include/smear/version.h | cut -f 
 default: all
 
 include tests/tests.mk
-include $(patsubst %,$(SRCDIR)/%/module.mk, $(MODULES))
-COBJ := $(SRC:%.c=$(OBJDIR)/%.o)
-OBJ :=  $(COBJ:%.zig=$(OBJDIR)/%.o)
-
-LIBS := $(sort $(LIBS))
 
 .PHONY: clean default all tests package zip tgz deb ALWAYS
 
-
 debug:
-	@echo inc $(INCLUDE)
 	@echo src $(SRC)
 	@echo libs $(LIBS)
 	@echo obj $(OBJ)
 	@echo arch $(ARCH)
 	@echo os $(OS)
-	@echo vpath $(VPATH)
 	@echo target cpu $(TARGET_CPU)
 	@echo target platform $(TARGET_PLATFORM)
+	@echo raw cpu $(CPU_RAW)
 
 all: libsmear.a libsmear.dmp tests obj/libsmear.a
 
 
--include $(OBJ:.o=.d)
-
 %.dmp: %.a
 	$(OBJDUMP) -dSt $< > $@
 
-obj/%.d: %.c # Slightly modified from GNU Make tutorial
-	@set -e; rm -f $@; \
-	  $(CC) -MM -MG $(CFLAGS) $< > $@.$$$$; \
-	  sed 's,\($*\)\.o[ :]*,obj/\1.o $@ : ,g' < $@.$$$$ > $@; \
-	  rm -f $@.$$$$
-
-# Hacky way to get rid of object file built by Zig; otherwise we get
-# multiple definition errors because cancellable.zig is included by
-# smear.zig.
-libsmear.a: $(subst obj/cancellable.o,,$(OBJ))
-	$(LD) $(LDFLAGS) -o $@ $^
-	$(OBJCOPY) --localize-hidden $@
+libsmear.a: $(SRC)
+	$(ZIG) build $(ZIGFLAGS)
 
 obj/libsmear.a: libsmear.a
 	strip -o $@ $<
-
-obj/%.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDE) $(LIBS) -c -o $@ $<
 
 stage: libsmear.a
 	rm -rf $(SMEAR_RELEASE_STAGE_DIR)
@@ -125,7 +103,7 @@ $(PACKAGE)_$(SMEAR_VERSION)-linux_$(TARGET_CPU).deb: libsmear.a
 	mv ../libsmear_$(SMEAR_VERSION)-$(TARGET_PLATFORM)_$(TARGET_CPU).* .
 
 zigtest: ALWAYS
-	zig build test
+	$(ZIG) build test
 
 clean:
 	rm -rf debian/$(PACKAGE)
@@ -134,3 +112,4 @@ clean:
 	rm -f debian/files debian/$(PACKAGE).substvars
 	rm -f debian/debhelper-build-stamp
 	rm -rf .zig-cache
+	rm -rf zig-out
