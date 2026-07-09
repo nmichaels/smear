@@ -245,7 +245,7 @@ pub const EventQueue = struct {
     /// Cancel the given ID. Fails if the event has already been run. On
     /// success, returns the cancelled event so that it can be
     /// freed. Releases the ID on success.
-    pub fn qCancel(q: *EventQueue, id: usize) CancelError!Event {
+    pub fn cancel(q: *EventQueue, id: usize) CancelError!Event {
         q.lock.lockUncancelable(q.io);
         defer q.lock.unlock(q.io);
 
@@ -363,7 +363,7 @@ export fn eq_cancel(
     const q: *EventQueue = @ptrCast(queue orelse return .FAIL_NO_SUCH_ID);
     const e: *Event = @ptrCast(event orelse return .FAIL_NO_SUCH_ID);
     e.* = null;
-    e.* = q.qCancel(@intCast(id)) catch |err| {
+    e.* = q.cancel(@intCast(id)) catch |err| {
         return switch (err) {
             error.NoSuchId => .FAIL_NO_SUCH_ID,
             error.AlreadyCancelled => .FAIL_ALREADY_CANCELLED,
@@ -461,7 +461,7 @@ test "fill-then-cancel" {
         try testing.expect(!q.empty());
 
         if (idx & 1 != 0) {
-            const e = try q.qCancel(id);
+            const e = try q.cancel(id);
             try q.check();
             try testing.expectEqual(expected, e);
             // Odd ones get cancelOrRelease'd
@@ -473,7 +473,7 @@ test "fill-then-cancel" {
             try q.check();
             try testing.expectEqual(expected, e);
             // Evens just get cancel'd
-            const no_such_id = q.qCancel(id);
+            const no_such_id = q.cancel(id);
             try testing.expectError(CancelError.NoSuchId, no_such_id);
             try q.check();
         }
@@ -509,7 +509,7 @@ test "fill-then-drain-all" {
         const e = q.nextEvent(1000);
         const expected: Event = @ptrFromInt(i);
         try testing.expectEqual(expected, e);
-        const already_run = q.qCancel(cancelIds[i]);
+        const already_run = q.cancel(cancelIds[i]);
         try testing.expectError(CancelError.AlreadyRun, already_run);
         try q.release(cancelIds[i]);
     }
@@ -644,13 +644,13 @@ test "cancel-some-drain-some" {
             try testing.expect(!q.empty());
             const e = q.nextEvent(1000);
             try testing.expectEqual(expected, e);
-            try testing.expectError(CancelError.AlreadyRun, q.qCancel(id));
+            try testing.expectError(CancelError.AlreadyRun, q.cancel(id));
             try q.release(id);
         } else {
             try testing.expect(!q.empty());
-            const e = try q.qCancel(id);
+            const e = try q.cancel(id);
             try testing.expectEqual(expected, e);
-            try testing.expectError(CancelError.NoSuchId, q.qCancel(id));
+            try testing.expectError(CancelError.NoSuchId, q.cancel(id));
             try testing.expectError(
                 CancelError.NoSuchId,
                 q.cancelOrRelease(id),
