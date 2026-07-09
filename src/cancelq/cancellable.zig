@@ -19,11 +19,6 @@ comptime {
     }
 }
 
-/// I know it's a faux pas in some C circles to typedef a pointer, and
-/// I'd rather avoid it here, but the alternative is to stick the
-/// alignment info everywhere the pointer type is used. This seems
-/// less bad.
-pub const event_queue_ptr_t = ?*align(@alignOf(EventQueue)) opaque {};
 pub const cancellable_id_t = isize;
 
 pub const NOT_CANCELLABLE: cancellable_id_t = -1;
@@ -46,9 +41,6 @@ const IdState = enum {
 
 const IdArray = ArrayList(IdState);
 
-// While event_queue_ptr_t is a pointer to this, nobody but this module
-// should be able to mess with these, so they don't need to be C ABI
-// compatible.
 pub const EventQueue = struct {
     heap: Heap,
     // Array of IDs for cancellation. A given ID is an index into this
@@ -310,120 +302,6 @@ pub const CancelError = error{
     NotRun,
     Locking,
 };
-
-export fn eq_new() event_queue_ptr_t {
-    var threaded = Io.Threaded.init(c_allocator, .{});
-    const result = EventQueue.new(c_allocator, threaded.io()) catch null;
-    return @ptrCast(result);
-}
-
-export fn eq_free(queue: event_queue_ptr_t) bool {
-    const q: *EventQueue = @ptrCast(queue orelse return false);
-    return q.free();
-}
-
-export fn eq_schedule(
-    queue: event_queue_ptr_t,
-    event: ?*const anyopaque,
-    time: smeartime.abs_time_t,
-) cancellable_id_t {
-    const q: *EventQueue = @ptrCast(queue orelse return SCHEDULE_FAIL);
-    const result = q.schedule(@ptrCast(event), time) catch return SCHEDULE_FAIL;
-    return @intCast(result);
-}
-
-export fn eq_post(
-    queue: event_queue_ptr_t,
-    event: Event,
-    time: smeartime.abs_time_t,
-) bool {
-    const q: *EventQueue = @ptrCast(queue orelse return false);
-    q.post(event, time) catch return false;
-    return true;
-}
-
-export fn eq_next_event(
-    queue: event_queue_ptr_t,
-    time: smeartime.abs_time_t,
-) ?*const anyopaque {
-    const q: *EventQueue = @ptrCast(queue orelse return null);
-    return @ptrCast(q.nextEvent(time));
-}
-
-export fn eq_empty(queue: event_queue_ptr_t) bool {
-    const q: *EventQueue = @ptrCast(queue orelse return false);
-    return q.empty();
-}
-
-export fn eq_cancel(
-    queue: event_queue_ptr_t,
-    id: cancellable_id_t,
-    event: ?*Event,
-) cancellation_status_t {
-    const q: *EventQueue = @ptrCast(queue orelse return .FAIL_NO_SUCH_ID);
-    const e: *Event = @ptrCast(event orelse return .FAIL_NO_SUCH_ID);
-    e.* = null;
-    e.* = q.cancel(@intCast(id)) catch |err| {
-        return switch (err) {
-            error.NoSuchId => .FAIL_NO_SUCH_ID,
-            error.AlreadyCancelled => .FAIL_ALREADY_CANCELLED,
-            error.AlreadyRun => .FAIL_ALREADY_RUN,
-            error.NotRun => .FAIL_NOT_RUN,
-            error.Locking => .FAIL_LOCKING,
-        };
-    };
-    return .SUCCESS;
-}
-
-export fn eq_cancel_or_release(
-    queue: event_queue_ptr_t,
-    id: cancellable_id_t,
-    event: ?*Event,
-) cancellation_status_t {
-    const q: *EventQueue = @ptrCast(queue orelse return .FAIL_NO_SUCH_ID);
-    const e: *Event = @ptrCast(event orelse return .FAIL_NO_SUCH_ID);
-    e.* = null;
-    e.* = q.cancelOrRelease(@intCast(id)) catch |err| {
-        return switch (err) {
-            error.NoSuchId => .FAIL_NO_SUCH_ID,
-            error.AlreadyCancelled => .FAIL_ALREADY_CANCELLED,
-            error.AlreadyRun => .FAIL_ALREADY_RUN,
-            error.NotRun => .FAIL_NOT_RUN,
-            error.Locking => .FAIL_LOCKING,
-        };
-    };
-    return .SUCCESS;
-}
-
-export fn eq_release(
-    queue: event_queue_ptr_t,
-    id: cancellable_id_t,
-) cancellation_status_t {
-    const q: *EventQueue = @ptrCast(queue orelse return .FAIL_NO_SUCH_ID);
-    q.release(@intCast(id)) catch |err| {
-        return switch (err) {
-            error.NoSuchId => .FAIL_NO_SUCH_ID,
-            error.AlreadyCancelled => .FAIL_ALREADY_CANCELLED,
-            error.AlreadyRun => .FAIL_ALREADY_RUN,
-            error.NotRun => .FAIL_NOT_RUN,
-            error.Locking => .FAIL_LOCKING,
-        };
-    };
-    return .SUCCESS;
-}
-
-/// Check that the internal data structure is consistent. There should
-/// be nothing you can do to make this return anything but true.
-export fn eq_validate(queue: event_queue_ptr_t) bool {
-    const q: *EventQueue = @ptrCast(queue orelse return false);
-    q.check() catch return false;
-    return true;
-}
-
-export fn eq_wait_empty(queue: event_queue_ptr_t) void {
-    const q: *EventQueue = @ptrCast(queue orelse unreachable);
-    return q.waitEmpty();
-}
 
 /// Compare events to make this a minheap with respect to delivery
 /// time.
