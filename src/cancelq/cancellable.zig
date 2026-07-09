@@ -105,19 +105,14 @@ pub const EventQueue = struct {
         return q.ids.items.len - 1;
     }
 
-    fn check(q: *EventQueue) bool {
+    fn check(q: *EventQueue) !void {
         q.lock.lockUncancelable(q.io);
         defer q.lock.unlock(q.io);
 
         // Make sure no two items in the heap have the same
         // cancellation ID (unless it's NOT_CANCELLABLE)
 
-        // This should only be called in tests and debug builds, so
-        // crashing on allocation failures is reasonable.
-        var seen: []bool = q.allocator.alloc(bool, q.ids.items.len) catch {
-            std.debug.assert(false);
-            return false;
-        };
+        var seen: []bool = try q.allocator.alloc(bool, q.ids.items.len);
         defer q.allocator.free(seen);
         for (seen) |*v| {
             v.* = false;
@@ -128,7 +123,7 @@ pub const EventQueue = struct {
             if (element.id >= 0) {
                 const id: usize = @intCast(element.id);
                 if (seen[id])
-                    return false;
+                    return error.DuplicatedCancellationId;
                 seen[id] = true;
             }
         }
@@ -137,9 +132,8 @@ pub const EventQueue = struct {
             if (id != .WAITING)
                 continue;
             if (!seen[idx])
-                return false;
+                return error.BadCancellationId;
         }
-        return true;
     }
 
     /// Schedule a cancellable event to be delivered at the appointed
@@ -422,7 +416,8 @@ export fn eq_release(
 /// be nothing you can do to make this return anything but true.
 export fn eq_validate(queue: event_queue_ptr_t) bool {
     const q: *EventQueue = @ptrCast(queue orelse return false);
-    return q.check();
+    q.check() catch return false;
+    return true;
 }
 
 export fn eq_wait_empty(queue: event_queue_ptr_t) void {
@@ -444,19 +439,19 @@ test "fill-then-cancel" {
     var ids: [COUNT]usize = undefined;
 
     try testing.expect(q.empty());
-    try testing.expect(q.check());
+    try q.check();
 
     // First, fill the queue with events.
     for (&ids, 0..) |*id, num| {
         const ev: Event = @ptrFromInt(num);
         id.* = try q.schedule(ev, @intCast(num * 2));
-        try testing.expect(q.check());
+        try q.check();
         try testing.expect(id.* >= 0);
         try testing.expectError(CancelError.NotRun, q.release(id.*));
-        try testing.expect(q.check());
+        try q.check();
     }
 
-    try testing.expect(q.check());
+    try q.check();
 
     var reversed = std.mem.reverseIterator(&ids);
     var idx: usize = COUNT;
@@ -467,24 +462,24 @@ test "fill-then-cancel" {
 
         if (idx & 1 != 0) {
             const e = try q.qCancel(id);
-            try testing.expect(q.check());
+            try q.check();
             try testing.expectEqual(expected, e);
             // Odd ones get cancelOrRelease'd
             const no_such_id = q.cancelOrRelease(id);
             try testing.expectError(CancelError.NoSuchId, no_such_id);
-            try testing.expect(q.check());
+            try q.check();
         } else {
             const e = try q.cancelOrRelease(id);
-            try testing.expect(q.check());
+            try q.check();
             try testing.expectEqual(expected, e);
             // Evens just get cancel'd
             const no_such_id = q.qCancel(id);
             try testing.expectError(CancelError.NoSuchId, no_such_id);
-            try testing.expect(q.check());
+            try q.check();
         }
     }
 
-    try testing.expect(q.check());
+    try q.check();
     try testing.expect(q.empty());
     try testing.expectEqual(q.nextEvent(0), null);
     try testing.expect(q.free());
@@ -504,7 +499,7 @@ test "fill-then-drain-all" {
 
         try testing.expect(!q.empty());
         try testing.expectError(CancelError.NotRun, q.release(id));
-        try testing.expect(q.check());
+        try q.check();
     }
 
     for (0..COUNT) |i| {
@@ -522,7 +517,7 @@ test "fill-then-drain-all" {
     try testing.expectEqual(null, q.nextEvent(1000));
 
     try testing.expect(q.empty());
-    try testing.expect(q.check());
+    try q.check();
 
     try testing.expect(q.free());
 }
@@ -602,7 +597,7 @@ test "threads" {
         while (q.empty()) {
             // this would be a good place to yield
         }
-        try testing.expect(q.check());
+        try q.check();
         const e = result: while (true) {
             // The first event is not necessarily at time i, since
             // it's possible the odd thread put events in the queue
@@ -639,7 +634,7 @@ test "cancel-some-drain-some" {
         cancelIds[i] = id;
         try testing.expect(!q.empty());
     }
-    try testing.expect(q.check());
+    try q.check();
 
     for (0..COUNT) |idx| {
         const expected: Event = @ptrFromInt(idx);
@@ -662,7 +657,7 @@ test "cancel-some-drain-some" {
             );
         }
     }
-    try testing.expect(q.check());
+    try q.check();
     try testing.expect(q.empty());
     try testing.expect(q.free());
 }
@@ -670,18 +665,18 @@ test "cancel-some-drain-some" {
 test "not-cancellable" {
     var q = try EventQueue.new(testing.allocator, testing.io);
     try testing.expect(q.empty());
-    try testing.expect(q.check());
+    try q.check();
     for (0..0x1000) |i| {
         const e: Event = @ptrFromInt(i);
         try q.post(e, i);
     }
-    try testing.expect(q.check());
+    try q.check();
     for (0..0x1000) |i| {
         const expected: Event = @ptrFromInt(i);
         const e = q.nextEvent(0xffffffff);
         try testing.expectEqual(expected, e);
     }
     try testing.expect(q.empty());
-    try testing.expect(q.check());
+    try q.check();
     try testing.expect(q.free());
 }
