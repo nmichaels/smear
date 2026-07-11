@@ -200,14 +200,14 @@ export fn SRT_cancel(id: usize) void {
     }
 }
 
-/// Sleep for 1 millisecond.
+/// Sleep for 1 nanosecond.
 export fn SRT_nap() void {
     const io = threaded.io();
-    const ms = Io.Clock.Duration{
-        .raw = .fromMilliseconds(1),
+    const ns = Io.Clock.Duration{
+        .raw = .fromNanoseconds(1),
         .clock = .awake,
     };
-    ms.sleep(io) catch {};
+    ns.sleep(io) catch {};
 }
 
 pub extern "c" fn fprintf(fid: c_int, format: [*:0]const u8, ...) c_int;
