@@ -28,12 +28,16 @@ OBJDIR := obj
 SRCDIR := src
 LIBS :=
 SRC := $(wildcard src/*.zig)
-OBJ := obj/smear.o
+CSMEAR_O := obj/smear.o
+CSMEAR_C := gen/smear.c
 CC ?= gcc
 OBJDUMP ?= objdump
 OBJCOPY ?= objcopy
 INCLUDE=-Iinclude
 CFLAGS := $(TARGET_ARCH_CFLAG) -ggdb3 -std=c99 -Wall -Werror -Wextra -Wno-unused-parameter -Wno-unused-function -fvisibility=hidden -O3 -fPIC # -pedantic
+C_BACKEND_CFLAGS := $(TARGET_ARCH_CFLAG) -ggdb3 -std=c99 -Wno-builtin-declaration-mismatch -Og
+ZIG_LIBDIR=$(shell zig env | grep lib_dir | cut -f 2 -d '=' | tr -d ',')
+C_BACKEND_INCLUDE=-I$(ZIG_LIBDIR)
 ZIG ?= zig
 ZIGFLAGS ?= 
 PACKAGE=libsmear-dev
@@ -50,18 +54,27 @@ include tests/tests.mk
 debug:
 	@echo src $(SRC)
 	@echo libs $(LIBS)
-	@echo obj $(OBJ)
 	@echo arch $(ARCH)
 	@echo os $(OS)
 	@echo target cpu $(TARGET_CPU)
 	@echo target platform $(TARGET_PLATFORM)
 	@echo raw cpu $(CPU_RAW)
+	@echo c-backend-include $(C_BACKEND_INCLUDE)
 
 all: libsmear.a libsmear.dmp tests obj/libsmear.a
 
 
 %.dmp: %.a
 	$(OBJDUMP) -dSt $< > $@
+
+$(CSMEAR_C): $(SRC)
+	$(ZIG) build -Dc_backend=true
+
+# Generate a smear.o using the C backend. I thought this might make
+# using helgrind easier, but it still uses custom primitives without
+# the helgrind.h ANNOTATE_* macros, so helgrind is still useless.
+$(CSMEAR_O): $(CSMEAR_C)
+	$(CC) -c -o $@ $(C_BACKEND_INCLUDE) $(TARGET_ARCH_CFLAG) $(C_BACKEND_CFLAGS) $(C_BACKEND_INCLUDE) $^
 
 libsmear.a: $(SRC)
 	$(ZIG) build $(ZIGFLAGS)
@@ -109,6 +122,7 @@ clean:
 	rm -rf debian/$(PACKAGE)
 	rm -rf debian/.debhelper
 	rm -rf obj/* *.a *.dmp *.deb *.tgz *.zip *.build *.buildinfo *.changes
+	rm -rf gen
 	rm -f debian/files debian/$(PACKAGE).substvars
 	rm -f debian/debhelper-build-stamp
 	rm -rf .zig-cache

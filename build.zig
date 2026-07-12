@@ -2,7 +2,11 @@ const std = @import("std");
 
 // runner.
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
+    const c_backend = b.option(bool, "c_backend", "Use the C backend.") orelse
+        false;
+    const target = b.standardTargetOptions(.{
+        .default_target = .{ .ofmt = if (c_backend) .c else null },
+    });
 
     const optimize = b.standardOptimizeOption(.{});
 
@@ -58,7 +62,11 @@ pub fn build(b: *std.Build) void {
 
     const smeara_install = b.addInstallArtifact(
         smeara,
-        .{ .dest_dir = .{ .override = .{ .custom = "../" } } },
+        .{ .dest_dir = .{
+            .override = .{
+                .custom = if (c_backend) "../gen/" else "../",
+            },
+        } },
     );
     b.getInstallStep().dependOn(&smeara_install.step);
 
