@@ -49,6 +49,7 @@ pub const EventQueue = struct {
 
     lock: Mutex,
     is_empty: Condition,
+    emptied: bool,
     allocator: Allocator,
     io: Io,
 
@@ -61,6 +62,7 @@ pub const EventQueue = struct {
         q.ids = .empty;
         q.lock = .init;
         q.is_empty = .init;
+        q.emptied = true;
         q.allocator = allocator;
         q.io = io;
         return q;
@@ -71,8 +73,8 @@ pub const EventQueue = struct {
     /// empty the queue before calling this.
     pub fn free(queue: *EventQueue) bool {
         const allocator = queue.allocator;
-        queue.lock.lockUncancelable(queue.io);
-        errdefer queue.lock.unlock(queue.io);
+        Io.Threaded.mutexLock(&queue.lock);
+        errdefer Io.Threaded.mutexUnlock(&queue.lock);
         if (!queue.emptyLH()) {
             return false;
         }
@@ -98,8 +100,8 @@ pub const EventQueue = struct {
     }
 
     fn check(q: *EventQueue) !void {
-        q.lock.lockUncancelable(q.io);
-        defer q.lock.unlock(q.io);
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
 
         // Make sure no two items in the heap have the same
         // cancellation ID (unless it's NOT_CANCELLABLE)
@@ -137,8 +139,8 @@ pub const EventQueue = struct {
         event: Event,
         time: smeartime.abs_time_t,
     ) !usize {
-        q.lock.lockUncancelable(q.io);
-        defer q.lock.unlock(q.io);
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
 
         const id = try q.newId();
         const element = Element{
@@ -148,6 +150,7 @@ pub const EventQueue = struct {
         };
 
         try q.heap.push(q.allocator, element);
+        q.emptied = false;
 
         if (HEAP_CHECK)
             std.debug.assert(q.check());
@@ -156,8 +159,8 @@ pub const EventQueue = struct {
 
     /// Post an uncancellable event to the queue, to be delivered at time.
     pub fn post(q: *EventQueue, ev: Event, time: smeartime.abs_time_t) !void {
-        q.lock.lockUncancelable(q.io);
-        defer q.lock.unlock(q.io);
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
 
         const element = Element{
             .event = ev,
@@ -165,17 +168,29 @@ pub const EventQueue = struct {
             .delivery_time = time,
         };
 
+        q.emptied = false;
         try q.heap.push(q.allocator, element);
         if (HEAP_CHECK)
             std.debug.assert(q.check());
     }
 
+    fn markEmpty(q: *EventQueue) void {
+        q.emptied = true;
+        q.is_empty.broadcast(q.io);
+    }
+
+    /// Call this after handling or cancelling an event.
+    pub fn checkEmpty(q: *EventQueue) void {
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
+        if (q.emptyLH()) q.markEmpty();
+    }
+
     /// Remove the next scheduled event for the provided time from the
     /// queue and return it. Returns null if nothing's due.
     pub fn nextEvent(q: *EventQueue, time: smeartime.abs_time_t) Event {
-        q.lock.lockUncancelable(q.io);
-        defer q.lock.unlock(q.io);
-        defer if (q.emptyLH()) q.is_empty.broadcast(q.io);
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
 
         const next = q.heap.peek() orelse return null;
         if (smeartime.time_compare(next.delivery_time, time) > 0)
@@ -190,8 +205,8 @@ pub const EventQueue = struct {
 
     /// Return whether or not the queue has outstanding events.
     pub fn empty(q: *EventQueue) bool {
-        q.lock.lockUncancelable(q.io);
-        defer q.lock.unlock(q.io);
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
         return q.emptyLH();
     }
 
@@ -238,9 +253,9 @@ pub const EventQueue = struct {
     /// success, returns the cancelled event so that it can be
     /// freed. Releases the ID on success.
     pub fn cancel(q: *EventQueue, id: usize) CancelError!Event {
-        q.lock.lockUncancelable(q.io);
-        defer q.lock.unlock(q.io);
-
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
+        defer if (q.emptyLH()) q.markEmpty();
         return q.cancelLH(id);
     }
 
@@ -253,8 +268,8 @@ pub const EventQueue = struct {
         q: *EventQueue,
         id: usize,
     ) CancelError!Event {
-        q.lock.lockUncancelable(q.io);
-        defer q.lock.unlock(q.io);
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
 
         if (q.ids.items.len <= id) {
             return CancelError.NoSuchId;
@@ -269,9 +284,9 @@ pub const EventQueue = struct {
 
     /// Return when the event queue is empty.
     pub fn waitEmpty(q: *EventQueue) void {
-        q.lock.lockUncancelable(q.io);
-        defer q.lock.unlock(q.io);
-        while (!q.emptyLH()) {
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
+        while (!q.emptied or !q.emptyLH()) {
             q.is_empty.waitUncancelable(q.io, &q.lock);
         }
     }
@@ -279,8 +294,8 @@ pub const EventQueue = struct {
     /// Release the resources associated with a cancellable event. Fails
     /// if the event has not already been run.
     pub fn release(q: *EventQueue, id: usize) CancelError!void {
-        q.lock.lockUncancelable(q.io);
-        defer q.lock.unlock(q.io);
+        Io.Threaded.mutexLock(&q.lock);
+        defer Io.Threaded.mutexUnlock(&q.lock);
 
         _ = try q.releaseLH(id);
     }
@@ -485,6 +500,7 @@ test "threads" {
         };
         try testing.expectEqual(expected, e);
     }
+    q.checkEmpty();
 
     // The queue should be empty.
     waiter.await(io);

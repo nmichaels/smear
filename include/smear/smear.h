@@ -89,10 +89,7 @@ void SRT_wait_for_idle(void);
 
 /* Block until there are no events left in the queue, including
  * delayed events, then return. Do not call this from within an event
- * handler. It will deadlock. Note that this does not guarantee that
- * all events have been handled; only that the queue is
- * empty. Arguably this is not a useful guarantee and I should fix
- * Smear. But that's the behavior. */
+ * handler. It will deadlock. */
 void SRT_wait_for_empty(void);
 
 /* Don't call this directly. */
@@ -105,11 +102,6 @@ cancel_token_t SRT_send_later(const void *msg, void (handler)(const void *),
  * held by the cancellable event. If this is called after the event is
  * delivered, it only releases the resources. */
 void SRT_cancel(cancel_token_t id);
-
-/* Delay a nanosecond. This is here to make up for the fact that
- * wait_for_empty doesn't guarantee that all events are handled. If it
- * ever does, this will either disappear or turn into a noop. */
-void SRT_nap(void);
 
 #ifdef __cplusplus
 }

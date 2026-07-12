@@ -59,7 +59,9 @@ fn flushEventQueue(allocator: Allocator, io: Io) void {
         if (qmsg) |msg| {
             msg.handler(msg.wrapper);
             allocator.destroy(msg);
+            q.checkEmpty();
         } else {
+            q.checkEmpty();
             break;
         }
     }
@@ -198,16 +200,6 @@ export fn SRT_cancel(id: usize) void {
     if (qmsg) |msg| {
         c_allocator.destroy(msg);
     }
-}
-
-/// Sleep for 1 nanosecond.
-export fn SRT_nap() void {
-    const io = threaded.io();
-    const ns = Io.Clock.Duration{
-        .raw = .fromNanoseconds(1),
-        .clock = .awake,
-    };
-    ns.sleep(io) catch {};
 }
 
 pub extern "c" fn fprintf(fid: c_int, format: [*:0]const u8, ...) c_int;
