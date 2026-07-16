@@ -8,15 +8,20 @@
 
 static void body(void)
 {
+    const char *volatile name;
     SRT_init();
     SRT_run();
-    assert(strcmp(test_Current_state_name(), "this") == 0);
+
+    name = test_Current_state_name();
+    assert(strcmp(name, "this") == 0);
     test_event(NULL);
     SRT_wait_for_empty();
-    assert(strcmp(test_Current_state_name(), "that") == 0);
+    name = test_Current_state_name();
+    assert(strcmp(name, "that") == 0);
     test_event(NULL);
     SRT_wait_for_empty();
-    assert(strcmp(test_Current_state_name(), "this") == 0);
+    name = test_Current_state_name();
+    assert(strcmp(name, "this") == 0);
     SRT_stop();
 }
 
